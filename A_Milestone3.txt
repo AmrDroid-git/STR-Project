@@ -1,0 +1,230 @@
+==============================================================
+PROJET STR - AI SMART AIRPORT
+MILESTONE 3 : MODELISATION TEMPS REEL ET THREADS POSIX
+Problematique : Gestion intelligente des correspondances
+==============================================================
+
+--------------------------------------------------------------
+1. LISTE DES THREADS / TACHES
+--------------------------------------------------------------
+(WCET = temps d'execution pire cas ESTIME ; a remplacer par les
+ valeurs mesurees au point 4. Pour une tache sporadique, la
+ "periode" est l'intervalle minimal entre deux arrivees.)
+
+ Tache  Role                  Type        Periode  WCET   Deadline  Criticite
+ -----  --------------------  ----------  -------  -----  --------  ---------
+ T1     Surveillance vols     periodique  100 ms   5 ms   100 ms    CRITIQUE
+        (detecte retards,
+        portes HS)
+ T2     Surveillance files    periodique  500 ms   20 ms  500 ms    NON crit.
+        passagers (securite)                                       (souple)
+ T3     Prediction IA         sporadique  >=200 ms 30 ms  200 ms    CRITIQUE
+        (risque d'une                     (inter-
+        correspondance)                   arrivee)
+ T4     Decision + ressources sporadique  >=100 ms 10 ms  100 ms    CRITIQUE
+        (reservation porte)
+ T5     Alerte critique       sporadique  >=500 ms 5 ms   50 ms     CRITIQUE
+        (porte HS, risque
+        tres eleve)
+ T6     Analyse historique    aperiodique -        200 ms none      NON crit.
+        (stats, journaux,                                          (arriere-
+        re-entrainement)                                           plan)
+
+Types (rappel en 1 ligne chacun) :
+  - periodique  : se reveille a intervalle fixe (T1, T2)
+  - sporadique  : declenchee par un evenement, avec un delai
+                  minimal entre deux arrivees et une deadline (T3, T4, T5)
+  - aperiodique : declenchee par un evenement, sans deadline
+                  stricte (T6)
+
+Charge pire cas (U = somme WCET / periode) :
+  T1 5/100 = 0.05 ; T2 20/500 = 0.04 ; T3 30/200 = 0.15 ;
+  T4 10/100 = 0.10 ; T5 5/500 = 0.01  -> U ~ 0.35 (T6 exclue)
+  Marge confortable ; on verifiera RM/DM/EDF au Milestone 5.
+
+Declenchement : T1/T2 par horloge ; T3, T4, T5 par semaphore
+(sem_post par la tache qui les alimente) ; T6 en arriere-plan.
+
+--------------------------------------------------------------
+2. CRITIQUES vs NON CRITIQUES : COEXISTENCE
+--------------------------------------------------------------
+Critique : manquer la deadline = decision trop tard = passagers
+  qui ratent leur vol (T1, T3, T4, T5).
+Non critique : un retard est acceptable (T2 souple, T6 sans deadline).
+
+Comment elles coexistent :
+  1. Priorites : T5 > T1 > T4 > T3 > T2 > T6
+     (deadline courte = priorite haute). Option : SCHED_FIFO
+     (necessite sudo) ; sinon priorites logiques + mesures.
+  2. Les taches non critiques ne bloquent jamais les critiques :
+     T6 en priorite la plus basse, jamais dans une section critique
+     longue.
+  3. Sections critiques courtes : mutex tenu quelques microsecondes
+     (copie d'etat), jamais pendant l'inference IA.
+  4. Taches sporadiques : file/semaphore bornee, pas d'attente active.
+  5. En surcharge : on delaisse T2/T6 d'abord, jamais T1/T5.
+  6. (Option) PTHREAD_PRIO_INHERIT sur les mutex partages pour eviter
+     l'inversion de priorite (voir Milestone 4).
+
+--------------------------------------------------------------
+3. EXEMPLE CONCRET : AVION A
+--------------------------------------------------------------
+Donnees : Avion A, Porte 1, retard = 10 min, 20 passagers en
+correspondance, temps restant = 30 min.
+
+ Instant  Evenement             Thread qui reagit        Mesure
+ -------  --------------------  -----------------------  ----------------
+ 10:05    "Avion A retard 10"   T1 le detecte (<= 100 ms) temps de detection
+                                T1 -> T3 (sem_post)
+          IA : risque = 0.50    T3 (WCET 30 ms)          exec T3, <= 200 ms
+          decision SURVEILLE    T4 (WCET 10 ms)          exec T4, <= 100 ms
+ 10:06    "Porte 1 HS"          T1 detecte -> T5 alerte  reaction <= 50 ms
+          reservation Porte 2   T4 (mutex/semaphore, M4) exec T4, <= 100 ms
+ en continu  file securite      T2 (toutes les 500 ms)   periode, jitter
+ en fond  statistiques          T6                       ne doit pas gener T1-T5
+
+Ce qu'il faut mesurer (pour chaque tache) :
+  - temps d'execution (fin - debut), min / moyen / max (-> WCET observe)
+  - temps de reponse = fin - instant de declenchement
+  - deadline respectee ? (oui/non) et nombre de depassements
+  - jitter des taches periodiques (ecart a la periode de 100 / 500 ms)
+  - temps total evenement -> decision (ex. "retard recu" -> "Porte 2")
+
+Verifier la concurrence : pendant l'inference de T3 (30 ms), T1
+doit continuer a tourner toutes les 100 ms (journal horodate).
+
+--------------------------------------------------------------
+4. EXEMPLE MINIMAL EN C (pthreads)
+--------------------------------------------------------------
+Illustre : T1 periodique (100 ms), T3 et T4 sporadiques via
+semaphores, mesure des temps. Le calcul IA est simule (30 ms) ;
+le vrai modele sera relie au Milestone 7 (noeud IA).
+
+Compilation : gcc -O2 m3_threads.c -o m3 -pthread
+------------------------------------------------------------
+// m3_threads.c
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <time.h>
+#include <unistd.h>
+
+static sem_t sem_event, sem_decision;
+static volatile int retard_min = 0;     // Avion A (protege au M4)
+static volatile int stop = 0;
+static double t_inject, t_evt, t_risk;  // instants (ms)
+
+static double now_ms(void) {
+    struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1000.0 + t.tv_nsec / 1e6;
+}
+static void work_ms(int ms) {           // simule un calcul
+    double end = now_ms() + ms; while (now_ms() < end);
+}
+
+// T1 : surveillance des vols, periode = deadline = 100 ms
+static void *t1_vols(void *arg) {
+    struct timespec next; clock_gettime(CLOCK_MONOTONIC, &next);
+    int vu = 0;
+    while (!stop) {
+        double rel = next.tv_sec * 1000.0 + next.tv_nsec / 1e6;
+        work_ms(5);
+        if (retard_min > 0 && !vu) {
+            vu = 1; t_evt = now_ms();
+            printf("[%8.1f] T1: retard Avion A = %d min -> T3\n",
+                   t_evt, retard_min);
+            sem_post(&sem_event);
+        }
+        double rep = now_ms() - rel;
+        if (rep > 100) printf("T1 DEADLINE MANQUEE (%.1f ms)\n", rep);
+        next.tv_nsec += 100 * 1000000L;
+        if (next.tv_nsec >= 1000000000L) {
+            next.tv_sec++; next.tv_nsec -= 1000000000L; }
+        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL);
+    }
+    return NULL;
+}
+
+// T3 : prediction IA (sporadique), deadline 200 ms
+static void *t3_ia(void *arg) {
+    while (1) {
+        sem_wait(&sem_event);
+        if (stop) break;
+        work_ms(30);                    // = predict_risk(10,20,30,10,5)
+        t_risk = now_ms();
+        printf("[%8.1f] T3: risque = 0.50 (%.1f ms, deadline 200)\n",
+               t_risk, t_risk - t_evt);
+        sem_post(&sem_decision);
+    }
+    return NULL;
+}
+
+// T4 : decision + ressources (sporadique), deadline 100 ms
+static void *t4_decision(void *arg) {
+    while (1) {
+        sem_wait(&sem_decision);
+        if (stop) break;
+        work_ms(10);
+        double fin = now_ms();
+        printf("[%8.1f] T4: SURVEILLE, Avion A -> Porte 2 "
+               "(%.1f ms, deadline 100)\n", fin, fin - t_risk);
+        printf("          temps evenement -> decision = %.1f ms\n",
+               fin - t_inject);
+    }
+    return NULL;
+}
+
+int main(void) {
+    pthread_t t1, t3, t4;
+    sem_init(&sem_event, 0, 0); sem_init(&sem_decision, 0, 0);
+    pthread_create(&t1, NULL, t1_vols, NULL);
+    pthread_create(&t3, NULL, t3_ia, NULL);
+    pthread_create(&t4, NULL, t4_decision, NULL);
+
+    sleep(1);                           // fonctionnement normal
+    t_inject = now_ms();
+    printf("[%8.1f] EVENT: Avion A retard = 10 min\n", t_inject);
+    retard_min = 10;
+    sleep(1);
+
+    stop = 1; sem_post(&sem_event); sem_post(&sem_decision);
+    pthread_join(t1, NULL); pthread_join(t3, NULL);
+    pthread_join(t4, NULL);
+    return 0;
+}
+------------------------------------------------------------
+Sortie attendue (valeurs indicatives) :
+  EVENT retard -> T1 detecte (0 a 100 ms plus tard) -> T3 ~30 ms
+  -> T4 ~10 ms -> temps total ~ 50 a 150 ms.
+
+A ajouter ensuite : T2 (periode 500 ms), T5 (alerte porte HS, 50 ms),
+T6 (arriere-plan), mutex sur l'etat des vols, journal dans un fichier.
+
+--------------------------------------------------------------
+5. LISTE DES TACHES POUR VALIDER LE MILESTONE 3
+--------------------------------------------------------------
+[ ] T1  Figer le tableau des taches (sect. 1) : role, type, periode,
+        WCET, deadline, criticite
+[ ] T2  Rediger la distinction critique / non critique et les
+        regles de coexistence (sect. 2)
+[ ] T3  Compiler et executer l'exemple minimal (T1, T3, T4)
+[ ] T4  Ajouter T2 (periodique 500 ms), T5 (alerte 50 ms),
+        T6 (arriere-plan)
+[ ] T5  Implementer le scenario Avion A : retard (10:05) puis
+        Porte 1 HS (10:06), chaque thread reagit selon sa role
+[ ] T6  Ajouter la mesure : debut/fin, temps de reponse, deadline
+        respectee, jitter, temps total evenement -> decision
+[ ] T7  Executer 100+ fois, relever min / moyen / max (WCET observe)
+        et mettre a jour le tableau (WCET estime -> mesure)
+[ ] T8  Montrer la concurrence : journal horodate ou T1 continue
+        pendant que T3 calcule
+[ ] T9  (Option) tester SCHED_FIFO avec sudo et comparer
+[ ] T10 Rediger la section rapport : modelisation, parametres,
+        mesures, limites
+
+Livrables M3 : code C documente (pthreads), tableau des taches,
+journal d'execution, mesures de temps, section de rapport.
+(Le PDF exige : role, WCET, periode, deadline par tache ;
+critique vs non critique ; preuve de concurrence ; mesures.)
+==============================================================

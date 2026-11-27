@@ -1,0 +1,21 @@
+MILESTONE 1 : CADRAGE, SCENARIO ET ARCHITECTURE
+
+A FAIRE :
+- Choisir une problematique precise (ex: correspondances, portes, files d'attente, ressources).
+- Lister les entites et leurs donnees (ex: vol, heure prevue/estimee, passagers, portes).
+- Definir les evenements, entrees, sorties et ressources partagees.
+- Separer ce qui doit etre traite immediatement de ce qui peut attendre (plus tard).
+- Dessiner l'architecture globale (grands modules / composants).
+- Faire tourner un scenario simule simple de bout en bout.
+
+A PENSER :
+- Transformer une idee floue en regles et donnees concretes avant de coder l'ensemble.
+- Garder des donnees coherentes pour le scenario de test.
+- Prevoir des blocs clairs (ex: reception evenement, estimation/analyse, decision/action) qui pourront evoluer vers les threads, l'IA et la distribution ensuite.
+
+QUESTIONS AUXQUELLES SAVOIR REPONDRE A LA FIN :
+- Quelle est la problematique exacte choisie par le groupe ?
+- Quelles sont les entites, donnees, evenements, ressources, entrees et sorties du systeme ?
+- Qu'est-ce qui doit etre traite immediatement et qu'est-ce qui peut etre traite plus tard (et pourquoi) ?
+- Comment est organisee l'architecture globale du systeme ?
+- Comment fonctionne le scenario simule simple execute a la fin du milestone ?

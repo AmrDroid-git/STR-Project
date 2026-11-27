@@ -1,0 +1,197 @@
+==============================================================
+PROJET STR - AI SMART AIRPORT
+MILESTONE 2 : DONNEES ET MODELE D'INTELLIGENCE ARTIFICIELLE
+Problematique : Gestion intelligente des correspondances
+==============================================================
+
+--------------------------------------------------------------
+1. QUESTION DU MODELE, ENTREES, SORTIE
+--------------------------------------------------------------
+Question precise :
+  "Pour un groupe de passagers en correspondance, quelle est la
+   probabilite qu'il rate son vol suivant ?"
+
+Type : classification binaire (1 = manquee, 0 = reussie),
+       on exploite la PROBABILITE (predict_proba), pas seulement
+       la classe.
+
+Entrees (5 variables) :
+  Variable              Unite   Exemple Avion A
+  --------------------  ------  ---------------
+  retard_min            min     10
+  nb_correspondances    pax     20
+  temps_restant_min     min     30   (apres le retard)
+  deplacement_min       min     10   (entre portes)
+  securite_min          min     5    (attente securite)
+
+Sortie :
+  risque = P(correspondance manquee), entre 0 et 1
+  (ex. 0.50 = 50 %)
+
+Utilisation dans la decision (lien avec le temps reel) :
+  risque >= 0.70        -> PRIORITAIRE (traiter en premier)
+  0.40 <= risque < 0.70 -> SURVEILLE
+  risque < 0.40         -> NORMAL
+(seuils a ajuster ; ils serviront au Milestone 6)
+
+--------------------------------------------------------------
+2. GENERATION DES DONNEES SIMULEES (3 000 lignes)
+--------------------------------------------------------------
+Principe : on tire des situations au hasard, puis on calcule le
+temps necessaire pour la correspondance avec un peu de bruit.
+  besoin = 5 (debarquement) + deplacement + securite
+           + 0.5 * nb_correspondances + bruit(0, 4)
+  label  = 1 (manquee) si besoin > temps_restant, sinon 0
+
+Avion A : besoin moyen = 5 + 10 + 5 + 0.5*20 = 30 min
+          temps restant = 30 min -> marge 0 -> risque ~ 0.50
+
+Code (generate_data.py) :
+------------------------------------------------------------
+import numpy as np, pandas as pd
+
+rng = np.random.default_rng(42)
+N = 3000
+retard      = rng.integers(0, 46, N)         # 0 a 45 min
+temps_prevu = rng.integers(30, 91, N)        # avant le retard
+restant     = np.maximum(temps_prevu - retard, 0)
+nb_corr     = rng.integers(5, 41, N)
+deplacement = rng.integers(3, 21, N)
+securite    = rng.integers(2, 16, N)
+
+besoin = 5 + deplacement + securite + 0.5*nb_corr \
+         + rng.normal(0, 4, N)
+manquee = (besoin > restant).astype(int)
+
+df = pd.DataFrame({
+  "retard_min": retard, "nb_correspondances": nb_corr,
+  "temps_restant_min": restant, "deplacement_min": deplacement,
+  "securite_min": securite, "manquee": manquee})
+df.to_csv("data_correspondances.csv", index=False)
+print(df.manquee.mean())   # proportion de "manquee" (viser 30-60 %)
+------------------------------------------------------------
+Verifications rapides : pas de valeurs negatives, classes pas
+trop desequilibrees (sinon ajuster les plages), 1 ligne =
+1 situation.
+
+--------------------------------------------------------------
+3. MODELE ML, ENTRAINEMENT, EVALUATION, TEMPS D'INFERENCE
+--------------------------------------------------------------
+Choix :
+  - Baseline : LogisticRegression (simple, tres rapide)
+  - Modele retenu : RandomForestClassifier (100 arbres)
+  Comparer les deux, garder celui qui est le meilleur ET assez
+  rapide (deadline de l'inference ~ 200 ms, cf. Milestone 1).
+
+Entrainement + test (train_model.py) :
+------------------------------------------------------------
+import pandas as pd, joblib
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (classification_report,
+                             confusion_matrix, roc_auc_score)
+
+FEATURES = ["retard_min", "nb_correspondances",
+            "temps_restant_min", "deplacement_min",
+            "securite_min"]
+df = pd.read_csv("data_correspondances.csv")
+X, y = df[FEATURES].values, df["manquee"].values
+Xtr, Xte, ytr, yte = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y)
+
+modeles = {
+  "LogReg": LogisticRegression(max_iter=1000),
+  "RandomForest": RandomForestClassifier(
+      n_estimators=100, random_state=42, n_jobs=1)}
+
+for nom, m in modeles.items():
+    m.fit(Xtr, ytr)
+    p = m.predict_proba(Xte)[:, 1]
+    print(nom, "AUC =", roc_auc_score(yte, p))
+    print(confusion_matrix(yte, m.predict(Xte)))
+    print(classification_report(yte, m.predict(Xte)))
+
+joblib.dump(modeles["RandomForest"], "model_risque.joblib")
+------------------------------------------------------------
+Metriques a reporter : accuracy, precision, rappel (recall) et
+F1 de la classe "manquee", matrice de confusion, AUC.
+Priorite : un bon RAPPEL sur "manquee" (mieux vaut une fausse
+alerte qu'une correspondance ratee non detectee).
+
+Interface appelable par le programme (predict.py) :
+------------------------------------------------------------
+import joblib, numpy as np
+_model = joblib.load("model_risque.joblib")
+
+def predict_risk(retard, nb_corr, restant, deplac, secu):
+    x = np.array([[retard, nb_corr, restant, deplac, secu]])
+    return float(_model.predict_proba(x)[0, 1])   # 0 a 1
+------------------------------------------------------------
+
+Mesure du temps d'inference (measure_inference.py) :
+------------------------------------------------------------
+import time, numpy as np
+from predict import predict_risk
+
+for _ in range(50):                       # echauffement
+    predict_risk(10, 20, 30, 10, 5)
+t = []
+for _ in range(1000):
+    t0 = time.perf_counter()
+    predict_risk(10, 20, 30, 10, 5)
+    t.append((time.perf_counter() - t0) * 1000)   # en ms
+print("moyenne ms:", np.mean(t))
+print("p99 ms    :", np.percentile(t, 99))
+print("max ms    :", np.max(t))
+------------------------------------------------------------
+A reporter : moyenne, p99 et max, puis comparer au budget
+(deadline 200 ms). Si c'est trop lent : moins d'arbres
+(ex. 30) ou LogisticRegression.
+Note : le premier appel est plus lent (chargement) -> echauffement.
+
+--------------------------------------------------------------
+4. EXEMPLE CONCRET : AVION A
+--------------------------------------------------------------
+Evenement (Milestone 1) : "Avion A retard = 10 min".
+
+Entree du modele :
+  retard = 10, nb_correspondances = 20, temps_restant = 30,
+  deplacement = 10, securite = 5
+
+  risque = predict_risk(10, 20, 30, 10, 5)
+  -> resultat attendu : environ 0.50 (a la marge pres du modele)
+
+Decision (si l'on a ~0.50) : SURVEILLE.
+Variante pour montrer l'effet du modele :
+  securite = 15 (grosse file) -> besoin ~40 > 30 -> risque eleve
+  (~0.9) -> PRIORITAIRE -> reaffecter Porte 2, notifier les 20
+  passagers.
+Rappel : le 0.60 du Milestone 1 etait une valeur simulee ; on
+le remplace maintenant par la sortie reelle du modele.
+
+--------------------------------------------------------------
+5. LISTE DES TACHES POUR VALIDER LE MILESTONE 2
+--------------------------------------------------------------
+[ ] T1  Figer la question, les 5 variables et la sortie (sect. 1)
+[ ] T2  Ecrire generate_data.py et produire le CSV (3 000 lignes)
+[ ] T3  Verifier les donnees (pas de valeurs aberrantes, classes
+        equilibrees, stats descriptives)
+[ ] T4  Entrainer LogisticRegression et RandomForest (split 80/20)
+[ ] T5  Evaluer : accuracy, precision, rappel, F1, matrice de
+        confusion, AUC -> tableau de comparaison
+[ ] T6  Choisir le modele et le sauvegarder (model_risque.joblib)
+[ ] T7  Ecrire predict_risk() appelable par le programme
+[ ] T8  Mesurer le temps d'inference (moyenne, p99, max) et le
+        comparer a la deadline de 200 ms
+[ ] T9  Tester le cas Avion A (+ variante securite = 15) et
+        afficher le niveau (NORMAL / SURVEILLE / PRIORITAIRE)
+[ ] T10 Rediger la section rapport : donnees, modele, metriques,
+        temps d'inference, lien avec la decision temps reel
+
+Livrables M2 : generate_data.py, CSV, train_model.py, modele
+sauvegarde, predict.py, mesures d'inference, section de rapport.
+(Le PDF exige : variables d'entree, variable predite, preparation
+des donnees, entrainement, test, performances, temps de prediction,
+modele appelable automatiquement.)
+==============================================================

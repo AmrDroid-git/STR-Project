@@ -1,0 +1,19 @@
+MILESTONE FINAL : VALIDATION ET DEMONSTRATION (1ER DECEMBRE 2026)
+
+A FAIRE :
+- Realiser une demonstration complete et vivante du systeme de bout en bout face a des evenements multiples.
+- Presenter les choix cles : architecture, modele IA, threads temps reel, synchronisation, RM/DM/EDF, ordonnancement IA et distribution.
+- Fournir des mesures experimentales (temps de reponse, deadlines, charge) et discuter les limites du systeme.
+- Repondre clairement aux questions d'evaluation pendant la demonstration.
+
+A PENSER :
+- Verifier que la demo est stable, reproductible et affiche clairement les etapes/decisions.
+- Connaitre par coeur les parametres temporels, ressources partagees et regles de priorite de votre systeme.
+- Assumer les limites observées (ex: surcharge, cout reseau ou IA) plutot que de les cacher.
+
+QUESTIONS AUXQUELLES SAVOIR REPONDRE A LA FIN :
+- Quelle tache etait critique et quelle etait sa deadline ?
+- Pourquoi cette tache a-t-elle ete executee avant une autre ?
+- Quelle ressource etait protegee (par semaphore / moniteur) et comment ?
+- Quel a ete le temps de reponse global et que se passe-t-il si le nombre d'evenements double ?
+- Quelles sont les principales limites de votre systeme ?

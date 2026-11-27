@@ -1,0 +1,18 @@
+MILESTONE 6 : ORDONNANCEMENT INTELLIGENT BASE SUR L'IA
+
+A FAIRE :
+- Relier le modele IA au module decisionnel / d'ordonnancement.
+- Utiliser les predictions IA pour ajuster la priorite ou l'ordre de traitement de certaines taches.
+- Comparer deux executions : priorites fixes vs ordonnancement influence par l'IA.
+- Mesurer l'effet sur les temps de reponse et verifier le respect des deadlines.
+
+A PENSER :
+- L'IA donne une estimation/probabilite (pas une certitude absolue).
+- Ne pas confondre "priorite intelligente" (choisir quelle situation traiter en premier) et garantie temporelle (respecter les deadlines).
+- Garder des regles claires pour que l'adaptation IA ne fasse pas exploser les deadlines d'autres taches critiques.
+
+QUESTIONS AUXQUELLES SAVOIR REPONDRE A LA FIN :
+- Comment les predictions de l'IA sont-elles transmises et utilisees pour adapter l'ordonnancement ?
+- Quelle difference observez-vous entre l'execution a priorites fixes et l'execution avec IA ?
+- Quel est l'impact sur les temps de reponse et les deadlines ?
+- Pourquoi faut-il distinguer la priorite guidee par l'IA et les garanties temps reel ?

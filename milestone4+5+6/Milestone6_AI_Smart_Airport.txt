@@ -1,0 +1,149 @@
+==============================================================
+PROJET STR - AI SMART AIRPORT
+MILESTONE 6 : ORDONNANCEMENT INTELLIGENT BASE SUR L'IA
+Problematique : Gestion intelligente des correspondances
+==============================================================
+Fichier de code fourni : m6_ai_sched.c
+  gcc -O2 -Wall m6_ai_sched.c -o m6_ai_sched -lm   puis   ./m6_ai_sched
+Les resultats ci-dessous viennent de l'execution de ce code
+(vos mesures varieront d'environ +/- 1 ms).
+
+--------------------------------------------------------------
+1. PRINCIPE : LIAISON IA <-> ORDONNANCEUR
+--------------------------------------------------------------
+Chaine de decision :
+
+  evenement (retard, porte...) --> Flight Monitor (T1)
+        --> AI Predictor (T3) : risque = P(correspondance manquee)
+        --> Decision / Scheduler (T4) : niveau + priorite
+        --> sous-taches executees dans l'ordre des priorites :
+            recherche de porte -> chemin passager -> notification
+
+Modele (regression logistique, poids du groupe) :
+  z = 1.9032 + 0.0127*retard + 0.2752*nb_corr
+      - 0.5139*temps_restant + 0.5004*deplacement + 0.5364*securite
+  risque = 1 / (1 + exp(-z))        (inference mesuree : 0.1135 ms)
+
+Regle de priorite :
+  risque >= 70 %  -> URGENT   (priorite la plus haute)
+  40 % - 70 %     -> WARNING
+  < 40 %          -> NORMAL
+  Plusieurs vols : priorite = rang du risque (le plus eleve = 0).
+  Egalite : ordre d'arrivee.
+
+Garde-fous (a ecrire dans le rapport) :
+  - l'IA ne reordonne que les sous-taches des vols ; les taches
+    critiques periodiques (T1, T5) gardent leurs priorites RM/DM/EDF ;
+  - si la prediction n'est pas prete a temps ou echoue : retour a
+    la priorite fixe (ordre d'arrivee) ;
+  - le temps d'inference (borne par son WCET) est compte dans le
+    budget temps de la decision.
+
+--------------------------------------------------------------
+2. SCENARIO : 3 VOLS ARRIVENT EN MEME TEMPS (t = 0)
+--------------------------------------------------------------
+Entrees choisies pour donner ~20 %, ~65 %, ~87 % avec vos poids :
+
+ Vol    retard  pax  restant  deplac  secu   risque   niveau
+ TU702    10     25     35      10      5    19.9 %   NORMAL
+ TU703    25     20     34      10     10    65.0 %   WARNING
+ TU701    30     35     40       5     15    87.1 %   URGENT
+ (unites : minutes ; pax = passagers en correspondance)
+
+Ordre d'arrivee : TU702, TU703, TU701.
+Chaque vol demande 3 sous-taches (duree simulee) :
+  recherche de porte 20 ms + chemin passager 30 ms
+  + notification 10 ms = 60 ms par vol, 180 ms pour les 3.
+Echeance de decision utilisee pour l'illustration : 150 ms.
+
+Verification du code C : avec les 3 exemples de predict.py
+(Avion A, B, C), la formule donne 0.0 %, 60.4 %, 100.0 %,
+conformes aux etiquettes NORMAL / WARNING / URGENT du fichier.
+
+--------------------------------------------------------------
+3. COMPARAISON DES 2 EXECUTIONS
+--------------------------------------------------------------
+Execution 1 - PRIORITE FIXE (ordre d'arrivee, IA ignoree) :
+  TU702 (0-60 ms) -> TU703 (60-120 ms) -> TU701 (120-180 ms)
+Execution 2 - PRIORITE IA (risque decroissant) :
+  TU701 (0-60 ms) -> TU703 (60-120 ms) -> TU702 (120-180 ms)
+
+Temps de reponse (fin de la notification, depuis t = 0) :
+
+ Vol     Risque   Fixe          IA            Gain
+ TU702   19.9 %    60 ms  OK    180 ms RATEE  -120 ms
+ TU703   65.0 %   120 ms  OK    120 ms OK       0 ms
+ TU701   87.1 %   180 ms RATEE   60 ms OK     +120 ms
+
+ Gain sur TU701 : 120 ms (67 % plus rapide).
+ Cout de l'inference IA (3 vols, en C) : ~0.002 ms, negligeable.
+ Echeances ratees : 1 en priorite fixe (TU701), 1 en priorite IA
+ (TU702) : la charge totale reste 180 ms dans les deux cas.
+
+A observer dans la sortie : trace horodatee de chaque
+sous-tache ; en mode IA, TU701 passe en premier ; le tableau
+final avec le gain sur TU701.
+
+--------------------------------------------------------------
+4. PARAGRAPHE POUR LE RAPPORT
+--------------------------------------------------------------
+"Priorite intelligente n'est pas garantie de deadline."
+
+Le module IA estime pour chaque vol la probabilite de rater sa
+correspondance (19.9 %, 65.0 %, 87.1 % pour TU702, TU703, TU701).
+Cette valeur est une estimation probabiliste : elle ne dit pas ce
+qui va se passer, elle sert uniquement a choisir l'ORDRE de
+traitement. En traitant TU701 en premier, son temps de reponse
+passe de 180 ms a 60 ms (-67 %) pour un cout d'inference
+negligeable. Mais la charge totale ne change pas : 180 ms de
+travail pour une echeance de 150 ms correspond a une charge de
+180/150 = 1.2 > 1, donc impossible a tenir pour tous les vols.
+Avec l'IA, c'est TU702 (risque 20 %) qui depasse son echeance a
+la place de TU701 : l'IA deplace le depassement, elle ne le
+supprime pas. Seules l'analyse des temps d'execution (WCET) et
+la condition de charge U <= 1 (Milestone 5, RM/DM/EDF)
+garantissent le respect des deadlines. L'IA fonctionne donc
+a l'interieur d'un systeme dont les garanties temporelles sont
+deja etablies : elle aide a decider, l'ordonnancement garantit.
+
+--------------------------------------------------------------
+5. LIMITES A MENTIONNER (oral / rapport)
+--------------------------------------------------------------
+  - Une erreur de prediction (faux 20 %) retarde a tort un vol
+    reellement a risque : garder un plan de repli (priorite fixe).
+  - Avec ces poids, la sortie est tres sensible : 1 minute de
+    temps restant en plus ou en moins change le risque d'environ
+    10 points autour de 50 %.
+  - Sous-taches simulees par attente active (duree fixe) : les
+    vraies durees seront a mesurer.
+  - Un seul processeur, pas de preemption entre vols.
+
+--------------------------------------------------------------
+6. CHECKLIST DE VALIDATION DU MILESTONE 6
+--------------------------------------------------------------
+[ ] 1. predict_risk() en C = version Python (memes 3 exemples
+       A, B, C : 0.0 %, 60.4 %, 100.0 %)
+[ ] 2. Entrees des 3 vols donnant ~20 %, ~65 %, ~87 % (sect. 2)
+[ ] 3. m6_ai_sched.c compile (gcc -O2 -Wall ... -lm) sans
+       avertissement
+[ ] 4. Trace du mode priorite fixe capturee (TU702 -> TU703 -> TU701)
+[ ] 5. Trace du mode priorite IA capturee (TU701 -> TU703 -> TU702)
+[ ] 6. Tableau comparatif : temps de reponse par vol et gain sur TU701
+[ ] 7. Temps d'inference mesure et inclus dans le temps de reponse
+[ ] 8. Experience d'echeance : DEADLINE_MS = 200 (charge 0.9 :
+       aucun depassement), puis 150 et 100 ; noter qui rate
+[ ] 9. Cas "3 vols URGENT" teste (priorites egales -> ordre
+       d'arrivee) et cas "IA indisponible" (repli sur priorite fixe)
+[ ] 10. Paragraphe "priorite intelligente != garantie de
+        deadline" integre au rapport (sect. 4)
+[ ] 11. Lien avec le Milestone 5 : charge U <= 1 verifiee avec
+        les WCET mesures (dont l'inference)
+[ ] 12. Reponse prete pour la demo : "Pourquoi TU701 avant
+        TU702 ? Quelle garantie reste valable ?"
+
+Livrables M6 : m6_ai_sched.c, sorties console (2 modes + tableau),
+mesures d'inference, paragraphe de rapport, limites.
+(Le PDF exige : comparaison priorites fixes vs priorites guidees
+par l'IA, effet sur les temps de reponse, sans confondre
+"priorite intelligente" et garantie de deadline.)
+==============================================================

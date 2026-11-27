@@ -1,0 +1,18 @@
+MILESTONE 4 : SEMAPHORES, MONITEURS ET ACCES CONCURRENTS
+
+A FAIRE :
+- Identifier les ressources partagees accessibles par plusieurs threads en meme temps (ex: portes, bus).
+- Utiliser des semaphores ou des moniteurs / sections critiques pour empecher les conflits d'acces.
+- Provoquer ou simuler experimentalement le bug sans synchronisation (ex: deux vols prennent la meme ressource).
+- Montrer experimentalement le comportement correct une fois la synchronisation activee.
+
+A PENSER :
+- Un semaphore compteur peut representer un stock limite de ressources (ex: N bus disponibles).
+- Une section critique / un moniteur protege la lecture et la mise a jour coherente de l'etat d'une ressource.
+- Garder la section critique la plus courte possible pour ne pas ralentir inutilement les autres threads.
+
+QUESTIONS AUXQUELLES SAVOIR REPONDRE A LA FIN :
+- Quelles ressources partagees sont manipulees par plusieurs threads et quels conflits peuvent survenir ?
+- Quels semaphores ou moniteurs avez-vous mis en place et quel est le role de chacun ?
+- Quel bug / allocation incoherente avez-vous observe sans synchronisation ?
+- Comment l'experience montre-t-elle que la synchronisation resout le conflit ?

@@ -1,0 +1,17 @@
+1. SUJET GENERAL
+- Gerer un aeroport simule en temps reel face aux imprevus.
+- L'IA predit/detecte les risques ; le temps reel garantit les delais et execute les decisions sans conflit.
+- Problematique libre par groupe.
+
+2. MODELISATION TEMPS REEL, CONCURRENCE ET SYNCHRONISATION
+- Decouper le systeme en threads POSIX avec parametres temporels (role, execution, periode, deadline, criticite) et types (periodique, sporadique, aperiodique).
+- Justifier la coexistence des taches sans rater les deadlines.
+- Proteger les ressources partagees (semaphores, moniteurs/sections critiques) et prouver le bug sans synchro puis la correction avec synchro.
+
+3. ORDONNANCEMENT TEMPS REEL ET ORDONNANCEMENT INTELLIGENT
+- Comparer RM, DM et EDF sur des taches representatives, verifier les deadlines et observer l'effet d'une charge croissante.
+- Adapter la priorite de certaines situations grace aux predictions IA, tout en distinguant prediction probabiliste (IA) et garanties temporelles (temps reel).
+
+4. ARCHITECTURE DISTRIBUEE
+- Repartir le systeme sur plusieurs noeuds communicants (ex: sockets TCP/UDP) avec messages contenant au minimum evenement, origine, horodatage et infos utiles.
+- Distinguer traitement local rapide (Edge) et analyse/apprentissage lourd (Cloud simule), justifie par les contraintes de temps.

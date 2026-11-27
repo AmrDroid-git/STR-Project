@@ -1,0 +1,19 @@
+MILESTONE 7 : DISTRIBUTION ET COMMUNICATION ENTRE NOEUDS
+
+A FAIRE :
+- Repartir le systeme sur plusieurs processus, processeurs ou machines (noeuds).
+- Mettre en place l'echange de messages entre noeuds (ex: sockets TCP/UDP).
+- Inclure au minimum dans chaque message : un identifiant, un type d'evenement et un horodatage (plus les donnees utiles).
+- Maintenir un etat coherent du scenario a travers les differents noeuds.
+- Mesurer les temps de communication et observer l'effet d'une augmentation du nombre de messages.
+
+A PENSER :
+- Garder une architecture simple mais fonctionnelle, ou chaque noeud a un role clair.
+- L'horodatage et la coherence des messages evitent les malentendus quand plusieurs evenements circulent.
+- Le cout reseau / communication s'ajoute au temps global de traitement quand le trafic augmente.
+
+QUESTIONS AUXQUELLES SAVOIR REPONDRE A LA FIN :
+- Comment les noeuds sont-ils repartis et quel est le role de chacun ?
+- Quel format de message utilisez-vous (identifiant, type d'evenement, horodatage, donnees) ?
+- Comment la coherence de l'etat est-elle assuree entre les noeuds ?
+- Quels temps de communication avez-vous mesures et que se passe-t-il quand le nombre de messages augmente ?

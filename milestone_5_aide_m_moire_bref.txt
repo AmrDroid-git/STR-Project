@@ -1,0 +1,19 @@
+MILESTONE 5 : ORDONNANCEMENT RM, DM ET EDF
+
+A FAIRE :
+- Choisir des taches representatives avec periode, temps d'execution et deadline.
+- Etudier et reproduire leur execution avec RM, DM et EDF.
+- Construire un diagramme temporel, verifier les deadlines et reperer les depassements.
+- Augmenter la charge du systeme (ex: evenements simultanes) et observer le comportement.
+
+A PENSER :
+- RM : priorite fixe selon la periode (periode courte = priorite haute).
+- DM : priorite fixe selon la deadline relative (deadline courte = priorite haute).
+- EDF : priorite dynamique selon la deadline absolue la plus proche.
+- Commencer par un exemple simple verifiable a la main avant d'augmenter la charge.
+
+QUESTIONS AUXQUELLES SAVOIR REPONDRE A LA FIN :
+- Quelles taches avez-vous modelisees et quels sont leurs parametres temporels ?
+- Comment se comportent RM, DM et EDF sur votre exemple (diagramme temporel et deadlines) ?
+- Quels depassements de deadline apparaissent lorsque la charge augmente ?
+- Quelles differences principales observez-vous entre les trois politiques ?

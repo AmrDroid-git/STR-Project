@@ -1,0 +1,20 @@
+MILESTONE 3 : MODELISATION TEMPS REEL ET THREADS POSIX
+
+A FAIRE :
+- Transformer les fonctions du systeme en taches / threads POSIX concurrents.
+- Definir pour chaque tache : son role, son temps d'execution estime, sa periode (si periodique) et sa deadline.
+- Distinguer les traitements critiques des traitements non critiques.
+- Faire tourner ces taches en concurrence sur un evenement concret.
+- Mesurer les temps d'execution des taches.
+
+A PENSER :
+- Certaines taches tournent en boucle reguliere (periodiques), d'autres se declenchent sur un evenement (sporadiques/aperiodiques).
+- Une tache critique doit avoir une deadline plus serree qu'un traitement secondaire (ex: statistiques/logs).
+- Verifier que le temps d'execution d'une tache reste coherent avec sa deadline.
+
+QUESTIONS AUXQUELLES SAVOIR REPONDRE A LA FIN :
+- Quels sont les threads crees et quel est le role de chacun ?
+- Quels sont les parametres temporels (temps d'execution estime, periode, deadline) de chaque tache ?
+- Quels traitements sont critiques et lesquels sont non critiques (et pourquoi) ?
+- Comment les threads reagissent-ils en concurrence lors d'un evenement ?
+- Quels temps d'execution avez-vous mesures ?

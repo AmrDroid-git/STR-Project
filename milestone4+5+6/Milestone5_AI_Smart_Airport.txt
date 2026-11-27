@@ -1,0 +1,169 @@
+==============================================================
+PROJET STR - AI SMART AIRPORT
+MILESTONE 5 : ORDONNANCEMENT TEMPS REEL (RM, DM, EDF)
+Problematique : Gestion intelligente des correspondances
+==============================================================
+Fichier de code fourni : m5_sched.c
+  gcc -O2 -Wall m5_sched.c -o m5_sched   puis   ./m5_sched
+Les resultats ci-dessous sont ceux obtenus en executant ce code.
+
+Note : les valeurs (C, T, D en ms) sont une echelle REDUITE pour
+pouvoir analyser a la main. Les valeurs reelles mesurees au
+Milestone 3 pourront etre reinjectees dans le tableau
+"scenarios" de m5_sched.c.
+
+--------------------------------------------------------------
+1. LES TACHES (issues du projet)
+--------------------------------------------------------------
+ T1 = surveillance des vols     T3 = prediction IA
+ T4 = decision / ressources     T5 = alerte critique
+ C = temps d'execution, T = periode, D = deadline relative
+ (T5 est sporadique : on la modelise en periodique pire cas,
+  T = delai minimal entre deux alertes ; D < T car une alerte
+  doit etre traitee tres vite.)
+
+Definitions :
+  U = somme des Ci/Ti   (U > 1 : impossible, le CPU ne suffit pas)
+  RM  : priorite fixe, T le plus court = plus prioritaire
+  DM  : priorite fixe, D le plus court = plus prioritaire
+  EDF : priorite dynamique, deadline ABSOLUE la plus proche
+        (deadline absolue = instant de lancement + D)
+  RM = DM quand D = T pour toutes les taches.
+
+--------------------------------------------------------------
+2. ETUDE MANUELLE : EXEMPLE S0 (hyperperiode = 20 ms)
+--------------------------------------------------------------
+ Tache   C    T    D     Ci/Ti
+ T1      2    5    5     0.40
+ T4      2   10   10     0.20
+ T5      2   20    4     0.10      <- D < T
+ U = 0.40 + 0.20 + 0.10 = 0.70  (< 1 : faisable en principe)
+
+Priorites :
+  RM  (par T) : T1 (5) > T4 (10) > T5 (20)   -> T5 la PLUS BASSE
+  DM  (par D) : T5 (4) > T1 (5) > T4 (10)    -> T5 la PLUS HAUTE
+  EDF : selon les deadlines absolues (T5 : 0+4 = 4 est la plus
+        proche a t = 0)
+
+Hyperperiode = ppcm(5, 10, 20) = 20 ms.
+Lancements : T1 a 0, 5, 10, 15 ; T4 a 0, 10 ; T5 a 0.
+
+Chronogramme (1 caractere = 1 ms, '.' = repos) :
+  temps :   0         10        20
+  RM  : |11445115.. 1144.11...|
+  DM  : |55114114.. 1144.11...|
+  EDF : |55114411.. 1144.11...|
+
+RM pas a pas :
+  0-2  T1 ; 2-4 T4 ; 4-5 T5 (1 ms sur 2)
+  5-7  T1 (2e lancement, plus prioritaire) ; 7-8 T5 termine a 8 ms
+  Deadline de T5 = 4 ms -> 8 > 4 : DEADLINE RATEE.
+DM pas a pas :
+  0-2  T5 (fini a 2 <= 4 OK) ; 2-4 T1 (fini a 4 <= 5 OK)
+  4-5  T4 ; 5-7 T1 (fini a 7 <= 10 OK) ; 7-8 T4 (fini a 8 <= 10 OK)
+EDF : meme resultat (0 raté) ; au lieu de reprendre T4 a 7, il
+  finit T4 (4-6) puis T1 (6-8) : egalite de deadline absolue (10),
+  le job le plus ancien (T4) est garde.
+Conclusion S0 : RM rate T5 (1 job sur 7), DM et EDF : 0 rate.
+Verification : le programme (scenario S0) donne la meme chose.
+
+--------------------------------------------------------------
+3. LES 3 SCENARIOS DE TEST (hyperperiode = 200 ms)
+--------------------------------------------------------------
+ Scenario 1 - FAISABLE (U = 0.69)
+   T1 (5, 20, 20)  T3 (15, 100, 100)  T4 (10, 40, 40)
+   T5 (2, 50, 50)
+   Tout D = T, U sous la borne RM (0.757) -> aucun rate attendu.
+
+ Scenario 2 - CRITIQUE (U = 0.90)
+   T1 (5, 20, 20)  T3 (30, 100, 100)  T4 (10, 40, 40)
+   T5 (5, 50, 10)                           <- D < T
+   Charge elevee ; T5 est urgente mais a une longue periode : RM
+   lui donne une priorite trop basse.
+
+ Scenario 3 - SURCHARGE (U = 1.10)
+   T1 (5, 20, 20)  T3 (50, 100, 100)  T4 (10, 40, 40)
+   T5 (5, 50, 10)
+   Plus de travail que de CPU : des deadlines SERONT ratees,
+   la question est lesquelles.
+
+Regle du simulateur : un job qui depasse sa deadline est compte
+RATE mais continue de s'executer (il prend du CPU en retard).
+
+--------------------------------------------------------------
+4. RESULTATS OBTENUS (deadlines ratees / jobs, taux de reussite)
+--------------------------------------------------------------
+ Scenario            RM             DM             EDF
+ ------------------  -------------  -------------  -------------
+ S0 manuel (0.70)    1/7   85.7 %   0/7   100 %    0/7   100 %
+ S1 faisable (0.69)  0/21  100 %    0/21  100 %    0/21  100 %
+ S2 critique (0.90)  1/21  95.2 %   0/21  100 %    0/21  100 %
+ S3 surcharge (1.10) 3/21  85.7 %   2/21  90.5 %    5/21  76.2 %
+
+Detail des ratees :
+  S2 RM  : T5 rate au 1er lancement (fini a 20 ms pour D = 10)
+  S3 RM  : T3 (2 jobs sur 2) et T5 (1)
+  S3 DM  : T3 (2 jobs sur 2) seulement
+  S3 EDF : T1 (3 sur 10), T4 (1 sur 5), T3 (1 sur 2) ; T5 : 0
+
+Extrait S2, 50 premieres ms (T5 = '5') :
+  RM  : |11111 44444 44444 55555 ...|  T5 fini a 20 > D = 10  RATE
+  DM  : |55555 11111 44444 44444 ...|  T5 fini a 5 <= 10      OK
+  EDF : meme debut que DM.
+
+--------------------------------------------------------------
+5. POURQUOI UNE TACHE RATE, ET QUELLE POLITIQUE REAGIT LE MIEUX
+--------------------------------------------------------------
+Pourquoi une deadline est ratee :
+  - Inversion d'urgence (S0, S2) : RM classe par periode, pas par
+    urgence. T5 (alerte, D = 10 sur T = 50) passe derriere T1 et T4
+    et attend 10 ms de calcul -> fini apres sa deadline.
+  - Surcharge (S3) : U > 1, la demande depasse la capacite du CPU ;
+    aucun algorithme ne peut tout tenir.
+
+Quelle politique est la meilleure :
+  - S1 (faisable) : les 3 se valent.
+  - S2 (critique, D < T) : DM et EDF passent, RM rate. DM suffit
+    et reste simple (priorites fixes) ; EDF est optimal (U <= 1)
+    mais plus lourd a implementer.
+  - S3 (surcharge) : RM/DM degradent de facon PREVISIBLE : seule la
+    tache de plus basse priorite (T3, l'IA) est sacrifiee, T1/T4/T5
+    sont protegees (DM mieux que RM ici : T5 reste OK). EDF subit
+    l'effet domino : les jobs en retard monopolisent le CPU et les
+    deadlines ratees s'etendent a T1 et T4, pourtant critiques.
+  - Retenir : EDF si U <= 1 ; en surcharge, priorites fixes (DM)
+    ou delaissage controle des taches non critiques.
+  - Lien avec l'IA (Milestone 6) : l'IA peut ajuster les priorites,
+    mais seule la politique d'ordonnancement garantit les deadlines.
+
+--------------------------------------------------------------
+6. CHECKLIST DE VALIDATION DU MILESTONE 5
+--------------------------------------------------------------
+[ ] 1. Jeu de taches choisi (T1, T3, T4, T5) avec Ci, Ti, Di ;
+       au moins une tache avec D < T
+[ ] 2. Calcul de U fait a la main pour chaque scenario
+[ ] 3. Priorites RM et DM ecrites a la main pour l'exemple S0
+[ ] 4. Chronogramme de S0 dessine a la main (RM, DM, EDF)
+[ ] 5. Verification des deadlines a la main : T5 rate en RM
+[ ] 6. m5_sched.c compile (gcc -O2 -Wall) sans avertissement
+[ ] 7. Le programme redonne le chronogramme de S0 (identique a la
+       main) -> preuve que le code est correct
+[ ] 8. Scenarios S1, S2, S3 executes ; captures de la sortie
+[ ] 9. Tableau comparatif RM / DM / EDF rempli (sect. 4)
+[ ] 10. Explication ecrite : pourquoi T5 rate en RM ; pourquoi
+        EDF s'ecroule plus que DM en surcharge
+[ ] 11. Charge augmentee : faire varier C de T3 (15 -> 50 par pas
+        de 5) ou ajouter des evenements simultanes, relever le
+        taux de reussite de chaque politique (courbe ou tableau)
+[ ] 12. Comparaison avec le Milestone 3 : reinjecter les WCET
+        mesures dans le tableau "scenarios" et relancer
+[ ] 13. Section de rapport redigee (modele de taches, resultats,
+        limites : monoprocesseur, pas de blocage par ressources
+        partagees, T5 sporadique modelisee en periodique)
+
+Livrables M5 : m5_sched.c, sorties console (S0 a S3), calculs et
+chronogrammes manuels, tableau comparatif, section de rapport.
+(Le PDF exige : modele de taches, RM/DM/EDF, diagramme temporel,
+verification des deadlines, effet de l'augmentation de charge,
+comparaison des comportements.)
+==============================================================

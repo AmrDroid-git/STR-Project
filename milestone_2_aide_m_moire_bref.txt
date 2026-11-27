@@ -1,0 +1,21 @@
+MILESTONE 2 : DONNEES ET MODELE D'INTELLIGENCE ARTIFICIELLE
+
+A FAIRE :
+- Choisir une question concrete a predire (ex: risque de correspondance manquee, retard, surcharge).
+- Definir les variables d'entree (features) et la variable de sortie (cible).
+- Preparer ou generer un jeu de donnees coherent (ex: plusieurs milliers de situations).
+- Entrainer, tester un modele ML ou DL et mesurer ses performances.
+- Mesurer approximativement le temps necessaire pour produire une prediction (temps d'inference).
+- Rendre le modele fonctionnel et appelable automatiquement par le programme.
+
+A PENSER :
+- Verifier que les donnees simulees respectent une logique realiste.
+- Surveiller le temps de prediction car le systeme a des contraintes temps reel.
+- Choisir une sortie exploitable par la suite pour orienter une decision ou une priorite.
+
+QUESTIONS AUXQUELLES SAVOIR REPONDRE A LA FIN :
+- Quelle question concrete le modele IA doit-il resoudre ?
+- Quelles sont les variables d'entree et quelle est la sortie predite ?
+- Comment les donnees ont-elles ete preparees/generees et comment le modele a-t-il ete evalue ?
+- Quel est le temps approximatif d'inference pour une prediction ?
+- Comment le programme appelle-t-il le modele automatiquement sur de nouvelles donnees ?

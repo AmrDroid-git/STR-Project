@@ -1,0 +1,18 @@
+MILESTONE 8 : INTEGRATION COMPLETE ET SCENARIOS DE CHARGE
+
+A FAIRE :
+- Reuni toutes les briques dans une demonstration unique de bout en bout (evenement, threads, IA, synchronisation, ordonnancement, communication, decision).
+- Tester des situations normales et des situations de surcharge.
+- Afficher la chronologie des evenements.
+- Mesurer le temps ecoule entre l'evenement initial et la decision finale.
+
+A PENSER :
+- Verifier que la synchronisation, l'ordonnancement et la communication fonctionnent ensemble sans blocage ni incoherence.
+- Comparer le comportement du systeme en charge normale vs surcharge (delais, deadlines, priorites).
+- Garder une trace claire (logs / chronologie) pour pouvoir prouver et analyser la demonstration.
+
+QUESTIONS AUXQUELLES SAVOIR REPONDRE A LA FIN :
+- Comment s'enchaine le flux complet de bout en bout lors de la demonstration ?
+- Quel est le temps mesure entre l'evenement initial et la decision finale ?
+- Comment le systeme se comporte-t-il en situation normale par rapport a une situation de surcharge ?
+- Quelles limites ou depassements apparaissent quand le systeme est surcharge ?

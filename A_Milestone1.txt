@@ -1,0 +1,223 @@
+==============================================================
+PROJET STR - AI SMART AIRPORT
+MILESTONE 1 : CADRAGE, SCENARIO ET ARCHITECTURE
+Problematique : Gestion intelligente des correspondances
+Rendu final du projet : 1er decembre 2026
+==============================================================
+
+--------------------------------------------------------------
+1. CADRAGE DE LA PROBLEMATIQUE
+--------------------------------------------------------------
+Probleme : quand un vol arrive en retard, des passagers en
+correspondance risquent de rater leur vol suivant. Le systeme
+doit, en temps reel :
+  - detecter le retard,
+  - estimer le risque de correspondance manquee (IA),
+  - reaffecter une porte si besoin (ressource partagee),
+  - declencher les actions pour sauver la correspondance
+    (priorite, notification, chemin passagers),
+  - le tout dans des delais maitrises (deadlines).
+
+Role de l'IA : estimer le risque (ex. 0.60 = 60 %).
+Role du temps reel : garantir que la decision est prise a temps.
+=> L'IA aide a decider, l'ordonnancement garantit les deadlines.
+
+Scenario simple (chiffres simples) :
+  - Avion A : arrivee prevue 10:00, Porte 1.
+  - 20 passagers d'Avion A ont une correspondance vers Avion B,
+    depart 10:40.
+  - 10:05 : evenement "Avion A retard = 10 min"
+            -> arrivee estimee 10:10.
+            -> temps restant avant le vol B = 30 min.
+  - 10:06 : evenement "Porte 1 indisponible".
+  - Porte 2 est libre.
+  - Temps de deplacement entre portes = 10 min ;
+    file de securite = 5 min ; debarquement = 5 min.
+  - Marge = 30 - (10 + 5 + 5) = 10 min -> risque moyen
+    (valeur simulee 0.60 au M1 ; vrai modele IA au M2).
+  - Decision attendue : reaffecter Avion A a la Porte 2,
+    marquer les 20 passagers "prioritaires", notifier.
+
+--------------------------------------------------------------
+2. ENTITES, DONNEES, RESSOURCES, ENTREES, SORTIES
+--------------------------------------------------------------
+2.1 Entites
+  - Vol (Avion A, Avion B)
+  - Porte d'embarquement (Porte 1, Porte 2)
+  - Groupe de passagers en correspondance
+  - File de controle de securite
+  - Modules du systeme (Flight Monitor, AI Predictor,
+    Decision/Scheduler, Passenger Monitor)
+
+2.2 Donnees / variables
+  Vol :
+    - id_vol (ex. "A")
+    - heure_prevue (10:00)
+    - heure_estimee (10:10)
+    - retard_min (10)
+    - nb_passagers (ex. 100)
+    - nb_correspondances (20)
+    - porte_actuelle (Porte 1)
+    - heure_vol_suivant (10:40)
+  Contexte :
+    - temps_restant_min (30)
+    - distance_ou_temps_deplacement_min (10)
+    - attente_securite_min (5)
+    - etat des portes (LIBRE / OCCUPEE / INDISPONIBLE)
+  Sorties IA :
+    - risque_correspondance (0 a 1)
+    - retard_estime (optionnel)
+
+2.3 Ressources partagees (a proteger : semaphores/moniteurs, M4)
+  - Les portes : semaphore compteur = nb de portes libres ;
+    mutex pour la mise a jour de l'etat d'une porte
+    (2 threads ne doivent jamais reserver la meme porte).
+  - Table d'etat des vols (lue/ecrite par plusieurs threads).
+  - File de messages / evenements.
+  - (Option) bus de transfert : semaphore compteur.
+
+2.4 Entrees (evenements)
+  - E1 : RETARD_VOL (id_vol, retard_min)
+  - E2 : PORTE_INDISPONIBLE (id_porte)
+  - E3 : FILE_SECURITE (taille ou temps d'attente)
+  - E4 : NOUVEAU_VOL / mise a jour d'etat (optionnel)
+
+2.5 Sorties (decisions)
+  - D1 : nouvelle porte attribuee (ex. Porte 2)
+  - D2 : groupe marque PRIORITAIRE
+  - D3 : notification aux passagers / au vol suivant
+  - D4 : chemin passagers calcule
+  - D5 : journal horodate (chronologie + temps de reponse)
+
+--------------------------------------------------------------
+3. TRAITEMENTS IMMEDIATS vs DIFFERES
+--------------------------------------------------------------
+(Les valeurs de periode/deadline sont des estimations de depart,
+ a affiner au Milestone 3.)
+
+IMMEDIATS (temps reel, urgents) :
+  Traitement                      Type        Deadline indicative
+  ------------------------------  ----------  -------------------
+  Reception/detection evenement   periodique  100 ms
+  Alerte critique (porte HS,      sporadique  50 ms
+   correspondance a risque)
+  Inference IA (risque)           sporadique  200 ms
+  Decision + reservation porte    sporadique  100 ms
+  Notification de la decision     sporadique  100 ms
+
+DIFFERES (non critiques, plus tard) :
+  - Surveillance des files passagers (periodique, ex. 500 ms,
+    deadline souple)
+  - Analyse historique des retards
+  - Re-entrainement du modele IA (cote "Cloud" simule)
+  - Statistiques, rapports, journalisation detaillee
+
+Regle : tout ce qui conditionne la decision avant le depart du vol
+suivant est immediat ; tout ce qui sert a ameliorer le systeme
+est differe.
+
+--------------------------------------------------------------
+4. ARCHITECTURE GENERALE
+--------------------------------------------------------------
+Modules (1 module = 1 processus/noeud, communication par sockets
+TCP/UDP) :
+
+  Noeud A - FLIGHT MONITOR
+     recoit les evenements vols/portes, gere l'etat des vols
+  Noeud B - AI PREDICTOR
+     execute le modele ML, renvoie le risque
+  Noeud C - DECISION / SCHEDULER
+     choisit l'action, ordonnance, reserve les portes
+  Noeud P - PASSENGER MONITOR
+     gere files de securite et groupes de correspondance
+
+Schema :
+
+   Simulateur d'evenements (E1, E2, E3)
+              |
+              v
+      +---------------+   (1) evenement    +---------------+
+      |  A: FLIGHT    | -----------------> |  B: AI        |
+      |  MONITOR      |                    |  PREDICTOR    |
+      +---------------+                    +---------------+
+         ^         ^                               |
+         |         |                      (2) risque = 0.60
+         |         |                               v
+         |         |  (4) demande porte    +---------------+
+         |         +---------------------- |  C: DECISION  |
+         |                                 |  / SCHEDULER  |
+         |  (3) etat                       +---------------+
+         +---------------------------------      |
+                                                 | (5) traiter groupe
+                                                 v
+                                         +---------------+
+                                         | P: PASSENGER  |
+                                         | MONITOR       |
+                                         +---------------+
+
+Flux (scenario Avion A) :
+  1. A recoit "Avion A retard 10 min" et l'envoie a B (et C).
+  2. B calcule risque = 0.60 et l'envoie a C.
+  3. C met a jour son etat global.
+  4. C decide : Porte 1 HS -> reservation Porte 2 (section
+     critique), demande a A de mettre a jour.
+  5. C demande a P de traiter les 20 passagers en priorite.
+  6. Journal horodate de toute la chaine.
+
+Format minimal d'un message :
+  { id, type_evenement, origine, horodatage, donnees }
+  exemple : { 1, RETARD_VOL, "A", 10:05:00.000,
+              {vol:"A", retard:10} }
+
+Edge / Cloud (optionnel, justifie par le temps) :
+  - Edge : decision rapide locale (inference + reservation porte).
+  - Cloud simule : entrainement et analyse historique (differe).
+
+--------------------------------------------------------------
+5. LISTE DES TACHES POUR VALIDER LE MILESTONE 1
+--------------------------------------------------------------
+Exigences du PDF : expliquer clairement le probleme, dessiner
+l'architecture, executer au moins un scenario simule simple.
+
+[ ] T1  Rediger le cadrage (section 1) : probleme, objectif,
+        role de l'IA vs role du temps reel.
+[ ] T2  Valider le scenario simple (Avion A / B, Porte 1 / 2,
+        10 min, 20 passagers, 30 min) et l'ecrire dans le rapport.
+[ ] T3  Definir entites, variables, ressources partagees,
+        entrees et sorties (section 2) sous forme de tableau.
+[ ] T4  Classer les traitements immediats / differes avec une
+        deadline indicative (section 3) et justifier.
+[ ] T5  Dessiner l'architecture finale (schema propre : draw.io
+        ou equivalent) avec modules, flux et formats de messages.
+[ ] T6  Definir le format des messages (id, type, origine,
+        horodatage, donnees) et la liste des types d'evenements.
+[ ] T7  Creer le squelette du code : 3-4 modules (A, B, C, P)
+        meme sans vraie IA ni sockets au debut.
+[ ] T8  Coder le scenario simule simple : injecter E1 puis E2,
+        risque simule par une regle (ex. marge < 15 min -> 0.60),
+        decision Porte 2, affichage de la chronologie.
+[ ] T9  Executer le scenario et capturer la sortie console
+        (preuve pour le rapport).
+[ ] T10 Repartir les roles dans le groupe de 6 (ex. : Flight
+        Monitor / IA / Decision-Scheduler / Passagers /
+        Synchronisation / Rapport-integration) et fixer le depot
+        de code commun.
+[ ] T11 Relire : chaque membre peut expliquer le probleme et
+        l'architecture a l'oral.
+
+Livrable M1 : section de rapport (sections 1 a 4) + schema
+d'architecture + code du scenario simple + capture d'execution.
+
+--------------------------------------------------------------
+6. A PREVOIR POUR LA SUITE (rappel du PDF)
+--------------------------------------------------------------
+  M2 : donnees simulees + modele ML + temps d'inference
+  M3 : threads POSIX (periode, WCET, deadline par tache)
+  M4 : semaphores/moniteurs + demo avec/sans synchronisation
+  M5 : RM, DM, EDF (exemple manuel puis programme, surcharge)
+  M6 : ordonnancement intelligent (priorite fixe vs priorite IA)
+  M7 : distribution + mesure du temps de communication
+  M8 : integration complete + scenarios normal/surcharge
+  Final : demo + mesures + limites, rapport, code, donnees, modele
+  (rendu le 1er decembre 2026)
+==============================================================

@@ -1,0 +1,11 @@
+# Compiled C binaries and objects
+*.exe
+*.o
+*.obj
+*.out
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/

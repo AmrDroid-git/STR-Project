@@ -1,0 +1,152 @@
+==============================================================
+PROJET STR - AI SMART AIRPORT
+MILESTONE 4 : SEMAPHORES, MONITEURS ET ACCES CONCURRENTS
+Problematique : Gestion intelligente des correspondances
+==============================================================
+Fichiers fournis avec ce document :
+  m4_sans_sync.c  : conflit (Porte 2 attribuee a Avion A ET Avion B)
+  m4_avec_sync.c  : correction (A -> Porte 2, B -> Porte 3)
+  m4_bus_sem.c    : semaphore compteur (3 bus, 6 groupes de 20 pax)
+
+--------------------------------------------------------------
+1. RESSOURCES PARTAGEES ET CONFLITS POSSIBLES
+--------------------------------------------------------------
+ Ressource            Threads concernes      Conflit possible
+ -------------------  ---------------------  ---------------------------
+ Portes (etat +       T4 (reserve), T1 (met  Double attribution : Avion A
+ reservation)         une porte HS), T5      et Avion B choisissent
+                                             Porte 2 en meme temps
+ Table d'etat des     T1 (ecrit retard),     Lecture incoherente : T3
+ vols                 T3 et T4 (lisent),     lit pendant que T1 met a
+                      T2 (passagers)         jour (retard a moitie ecrit)
+ File d'evenements    T1 produit ;           Perte/corruption si deux
+                      T3, T4, T5 consomment  threads modifient la file ;
+                                             file vide ou pleine
+ Bus de transfert     Groupes de passagers   Plus de groupes que de bus
+ (3 ou 5)             (traites par T4)       disponibles
+ Console / journal    Tous                   Lignes melangees (optionnel)
+
+--------------------------------------------------------------
+2. MECANISME CHOISI PAR RESSOURCE
+--------------------------------------------------------------
+ Ressource            Mecanisme                       Pourquoi
+ -------------------  ------------------------------  -----------------
+ Portes               Semaphore compteur (= nb de     Le semaphore dit
+                      portes libres) + mutex pour     "il reste une
+                      "chercher + reserver" en un     porte" ; le mutex
+                      seul bloc                       evite le conflit
+ Table d'etat vols    Mutex (sections tres courtes :  Simple, rapide ;
+                      copier/ecrire une structure)    pas d'IA sous verrou
+ File d'evenements    Moniteur = mutex + 2 variables  Attente passive
+                      de condition (non_vide,         du consommateur,
+                      non_pleine), taille bornee 16   pas d'attente active
+ Bus de transfert     Semaphore compteur (valeur      sem_wait = prendre
+                      initiale 3 ou 5)                un bus, sem_post =
+                                                      le rendre
+ Console / journal    Mutex (ou un seul thread        Lignes lisibles
+                      d'ecriture)
+
+Regles :
+  - Sections critiques tres courtes : jamais d'inference IA (T3,
+    30 ms) ni de calcul long sous verrou. (La demo garde 1 ms
+    sous verrou volontairement pour montrer qu'il protege.)
+  - Ordre fixe si plusieurs verrous (ex. portes avant vols) pour
+    eviter l'interblocage (deadlock).
+  - Pas de printf long sous un verrou critique.
+
+--------------------------------------------------------------
+3. A PREPARER / VERIFIER AVANT DE CODER
+--------------------------------------------------------------
+[ ] Environnement : Linux ou WSL avec gcc (gcc --version) ;
+    sous Windows natif, pthreads/semaphores POSIX ne marchent pas.
+[ ] Scenario fige : Porte 1 HS, Porte 2 et Porte 3 libres ;
+    Avion A et Avion B demandent une porte quasi simultanement.
+[ ] Resultat attendu ecrit AVANT l'execution :
+      sans sync : Porte 2 attribuee 2 fois ;
+      avec sync : A -> Porte 2, B -> Porte 3.
+[ ] Liste des ressources partagees validee (sect. 1) et mecanisme
+    choisi pour chacune (sect. 2).
+[ ] Ou se trouve la section critique : "chercher + reserver" =
+    UNE seule section (pas deux verrous separes).
+[ ] Valeurs initiales des semaphores : portes libres = 2
+    (Porte 2 et Porte 3), bus = 3 (puis 5).
+[ ] Fenetre de conflit : le delai de 1 ms (usleep) entre "voir libre"
+    et "reserver" rend le conflit reproductible. Compiler en -O0.
+[ ] Metrique a relever : nombre de conflits sur N essais.
+[ ] Lien avec le projet : la fonction de reservation de
+    m4_avec_sync.c sera reprise dans T4 (decision/ressources).
+
+--------------------------------------------------------------
+4. COMPILATION, EXECUTION, OBSERVATIONS
+--------------------------------------------------------------
+Compilation :
+  gcc -O0 -Wall -pthread m4_sans_sync.c -o m4_sans_sync
+  gcc -O0 -Wall -pthread m4_avec_sync.c -o m4_avec_sync
+  gcc -O0 -Wall -pthread m4_bus_sem.c   -o m4_bus_sem
+
+Execution :
+  ./m4_sans_sync
+  ./m4_avec_sync
+  ./m4_bus_sem
+
+Que observer (et copier dans le rapport) :
+
+ m4_sans_sync :
+   - Avion A et Avion B affichent tous les deux "Porte 2 est libre"
+     AVANT que l'un des deux ait reserve.
+   - Puis "Avion A : reserve Porte 2" et "Avion B : reserve Porte 2".
+   - Ligne "=> CONFLIT : Porte 2 attribuee a 2 vols".
+   - Bilan attendu : conflits sur 5 essais sur 5 (le delai de 1 ms
+     force la situation ; sans lui le conflit est possible mais
+     non deterministe).
+
+ m4_avec_sync :
+   - Avion A : "reserve Porte 2" ; Avion B attend le verrou, puis
+     "Porte 2 non disponible (occupee), suivante" et
+     "reserve Porte 3".
+   - "=> OK : aucune porte attribuee deux fois" a chaque essai.
+   - Bilan : 0 conflit sur 5 essais.
+   - Test supplementaire : NB_VOLS = 3 -> Avion C affiche
+     "aucune porte libre -> file d'attente" (le semaphore vaut 0).
+
+ m4_bus_sem :
+   - 3 groupes montent tout de suite (bus utilises 1/3, 2/3, 3/3),
+     les 3 autres attendent.
+   - Apres ~300 ms, des bus sont liberes et les groupes suivants
+     montent.
+   - "Max de bus utilises en meme temps : 3 (limite 3) -> OK".
+   - Duree totale ~600 ms contre 1800 ms en sequentiel.
+   - Refaire avec NB_BUS = 5 : 5 groupes partent tout de suite,
+     le 6e attend ~300 ms -> duree totale ~600 ms (2 vagues).
+     Avec NB_BUS = 6 : ~300 ms (1 seule vague).
+
+Un seul essai ne suffit pas : lancer plusieurs fois, garder
+une capture de chaque sortie pour le rapport.
+
+--------------------------------------------------------------
+5. CHECKLIST DE VALIDATION DU MILESTONE 4
+--------------------------------------------------------------
+[ ] 1. Liste des ressources partagees + conflits possibles (sect. 1)
+[ ] 2. Mecanisme choisi et justifie pour chaque ressource (sect. 2)
+[ ] 3. m4_sans_sync.c compile et montre le conflit (capture console)
+[ ] 4. m4_avec_sync.c compile et supprime le conflit
+        (A -> Porte 2, B -> Porte 3, 0 conflit)
+[ ] 5. Comparaison sans / avec sync : tableau "conflits / N essais"
+[ ] 6. Test Avion C (NB_VOLS = 3) : plus de porte -> attente
+[ ] 7. m4_bus_sem.c compile : max de bus <= 3 ; essai avec 5 bus
+[ ] 8. Explication ecrite : pourquoi le mutex rend "chercher +
+        reserver" atomique, et le role du semaphore compteur
+[ ] 9. Moniteur (file d'evenements) decrit : mutex + variables
+        de condition (implementation possible au Milestone 8)
+[ ] 10. Reservation integree dans T4 du Milestone 3 (reserver_porte)
+[ ] 11. Section de rapport redigee (probleme, solution, mesures,
+         limites : interblocage, sections critiques longues)
+[ ] 12. Chaque membre peut repondre : "Quelle ressource est
+         protegee par le semaphore ?" (question de la demo finale)
+
+Livrables M4 : 3 fichiers C commentes, captures d'execution,
+tableau comparatif, section de rapport.
+(Le PDF exige : situations d'acces concurrent identifiees,
+semaphores ou moniteurs, demonstration SANS puis AVEC
+synchronisation, et un second exemple type "5 bus".)
+==============================================================
